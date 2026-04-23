@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import List, Protocol, Self, Set
+from typing import List, Protocol, Self, Set, Optional
 from .config import ConfigError, Settings
 from . import nlp
 
@@ -17,18 +17,46 @@ class FeedResult(Protocol):
 
 
 @dataclass
+class ScrapedEntry:
+    title: str
+    link: str
+    published_parsed: time.struct_time | None = None
+
+
+@dataclass
+class Selectors:
+    item: str
+    title: str
+    link: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, str]) -> Self:
+        return cls(
+            item=data["item"],
+            title=data["title"],
+            link=data["link"],
+        )
+
+
+@dataclass
 class NewsSource:
     name: str
     url: str
     language: str
+    selectors: Optional[Selectors] = None
 
     @classmethod
-    def from_yaml(cls, data: dict[str, str]) -> Self:
+    def from_yaml(cls, data: dict[str, any]) -> Self:
         try:
+            selectors = None
+            if "selectors" in data:
+                selectors = Selectors.from_dict(data["selectors"])
+
             return cls(
                 name=data["source"],
                 url=data["url"],
                 language=data["language"],
+                selectors=selectors,
             )
         except KeyError as e:
             raise ConfigError(f"Missing required field in config: {e}")
