@@ -11,7 +11,7 @@ def _get_sentences(text: str, language: str) -> List[str]:
         return [s.strip() for s in tokenizer.to_sentences(text) if len(s.strip()) > 20]
     except Exception:
         # Fallback to simple split if language is unknown
-        return [s.strip() for s in text.split('.') if len(s.strip()) > 20]
+        return [s.strip() for s in text.split(".") if len(s.strip()) > 20]
 
 
 def group_articles(
@@ -47,12 +47,12 @@ def group_articles(
 
     for article in articles:
         found_cluster = False
-        
+
         # Filter noise from the current article's keywords
         # We use English keywords for cross-language comparison
         art_title_keys = article.english_title_keywords
         art_all_keys = article.english_keywords - noise_keywords
-        
+
         for cluster in clusters:
             rep = cluster[0]
             rep_title_keys = rep.english_title_keywords
@@ -62,7 +62,7 @@ def group_articles(
             # Title overlap is a strong signal (weight = 5)
             title_intersection = art_title_keys.intersection(rep_title_keys)
             title_union = art_title_keys.union(rep_title_keys)
-            
+
             # Smart Substring Match for Titles (e.g., Swedish compounds)
             # If no exact match, check if one word is a substring of another
             title_match_count = len(title_intersection)
@@ -72,7 +72,8 @@ def group_articles(
                         if (len(ak) > 4 and ak in rk) or (len(rk) > 4 and rk in ak):
                             title_match_count = 0.5
                             break
-                    if title_match_count > 0: break
+                    if title_match_count > 0:
+                        break
 
             # Content overlap is a weak signal (weight = 1)
             content_intersection = art_all_keys.intersection(rep_all_keys)

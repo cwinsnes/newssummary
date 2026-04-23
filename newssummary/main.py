@@ -9,13 +9,13 @@ from newssummary.generator import generate_digest
 
 
 def main() -> None:
-    config_data = load_config()
-    sources = [NewsSource.from_yaml(item) for item in config_data]
+    settings, sources_data = load_config()
+    sources = [NewsSource.from_yaml(item) for item in sources_data]
     all_articles: List[Article] = []
 
     for source in sources:
         print(f"Fetching from {source.name}...")
-        all_articles.extend(fetch_articles(source))
+        all_articles.extend(fetch_articles(source, settings))
 
     if not all_articles:
         print("No recent articles found.")
@@ -35,7 +35,7 @@ def main() -> None:
 
     # Generate HTML Digest
     index_path = generate_digest(all_articles, elevated_topics, broad_groups)
-    
+
     print(f"\n{'#'*80}")
     print(f"### DIGEST GENERATED SUCCESSFULLY")
     print(f"{'#'*80}")

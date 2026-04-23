@@ -1,8 +1,8 @@
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import List, Protocol, Self, Set
-from .config import ConfigError
+from .config import ConfigError, Settings
 from . import nlp
 
 
@@ -41,13 +41,19 @@ class Article:
     raw_text: str
     language: str
     source_name: str = "Unknown"
+    settings: Settings = field(default_factory=Settings)
 
     def __bool__(self) -> bool:
         return bool(self.raw_text.strip())
 
     @cached_property
     def summary(self) -> str:
-        return nlp.summarize(self.raw_text, self.language)
+        return nlp.summarize(self.raw_text, self.language, self.settings.summary_length)
+
+    @cached_property
+    def reading_time(self) -> int:
+        words = len(self.raw_text.split())
+        return max(1, round(words / self.settings.reading_speed_wpm))
 
     @cached_property
     def title_keywords(self) -> Set[str]:
@@ -57,12 +63,12 @@ class Article:
     def english_title_keywords(self) -> Set[str]:
         if self.language.lower() == "english":
             return self.title_keywords
-        
+
         # Translate the whole title for context-aware keyword translation
         translated_title = nlp._translate_text_blob(self.title, self.language)
         if not translated_title:
             return self.title_keywords
-            
+
         return nlp.extract_keywords_from_text(translated_title, "english")
 
     @cached_property
@@ -71,8 +77,10 @@ class Article:
 
     @cached_property
     def keywords(self) -> Set[str]:
-        return nlp.get_keywords(self.title, self.summary, self.language, self.english_keywords)
+        return nlp.get_keywords(
+            self.title, self.summary, self.language, self.english_keywords
+        )
 
     @cached_property
     def category(self) -> str:
-        return nlp.get_category(self.english_keywords)
+        return nlp.get_category(self.english_keywords, self.english_title_keywords)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from typing import cast, List
 from newssummary.cache import disk_cache
-from newssummary.models import Article, NewsSource, FeedResult, FeedEntry
+from newssummary.models import Article, NewsSource, FeedResult, FeedEntry, Settings
 
 
 @disk_cache
@@ -24,7 +24,7 @@ def fetch_article_text(url: str) -> tuple[int, str]:
     return num_paragraphs, content or ""
 
 
-def fetch_articles(source: NewsSource) -> List[Article]:
+def fetch_articles(source: NewsSource, settings: Settings) -> List[Article]:
     result = cast(FeedResult, feedparser.parse(source.url))
     entries = result.entries
     if not isinstance(entries, list):
@@ -36,7 +36,10 @@ def fetch_articles(source: NewsSource) -> List[Article]:
         if entry.link in seen_urls:
             continue
         try:
-            if entry.published_parsed < (datetime.now() - timedelta(days=1)).timetuple():
+            if (
+                entry.published_parsed
+                < (datetime.now() - timedelta(days=1)).timetuple()
+            ):
                 continue
         except Exception:
             pass  # If published_parsed is missing or malformed, we still want to process it
@@ -54,6 +57,7 @@ def fetch_articles(source: NewsSource) -> List[Article]:
                 raw_text=article_text,
                 language=source.language,
                 source_name=source.name,
+                settings=settings,
             )
         return None
 

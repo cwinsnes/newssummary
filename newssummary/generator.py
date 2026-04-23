@@ -1,5 +1,6 @@
 import datetime
 import collections
+import html
 from pathlib import Path
 from typing import List, Dict
 from newssummary.models import Article
@@ -13,7 +14,10 @@ BASE_TEMPLATE = """
     <title>{title} - News Summary</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
-        :root {{ --pico-font-size: 100%; }}
+        :root {{ 
+            --pico-font-size: 100%; 
+            --pico-border-radius: 12px;
+        }}
         
         /* Custom News Grid that actually wraps */
         .news-grid {{
@@ -34,17 +38,22 @@ BASE_TEMPLATE = """
             height: 100%; 
             display: flex; 
             flex-direction: column;
-            border-radius: 12px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border-radius: var(--pico-border-radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--pico-muted-border-color);
         }}
         
         article:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
         }}
 
-        article footer {{ margin-top: auto; }}
+        article footer {{ 
+            margin-top: auto; 
+            display: flex;
+            gap: 0.5rem;
+        }}
 
         /* Trending Story Accents */
         .trending-story {{ border-top: 4px solid var(--pico-primary); }}
@@ -64,6 +73,15 @@ BASE_TEMPLATE = """
             background: var(--pico-secondary-background);
             margin-right: 5px;
             text-transform: uppercase;
+            font-weight: bold;
+        }}
+
+        .reading-time {{
+            font-size: 0.75rem;
+            opacity: 0.7;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }}
 
         .comparison-grid {{
@@ -76,6 +94,12 @@ BASE_TEMPLATE = """
         .breadcrumb {{ margin-bottom: 2rem; }}
         
         .cat-card {{ padding: 1rem; text-align: center; border: 1px solid var(--pico-muted-border-color); }}
+
+        .copy-btn {{
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            margin: 0;
+        }}
     </style>
 </head>
 <body>
@@ -99,43 +123,96 @@ BASE_TEMPLATE = """
             <span>Local Digest System</span>
         </div>
     </footer>
+    <script>
+        function copyToClipboard(btn) {{
+            const text = btn.getAttribute('data-summary');
+            
+            // Try modern API first
+            if (navigator.clipboard && window.isSecureContext) {{
+                navigator.clipboard.writeText(text).then(() => showSuccess(btn));
+                return;
+            }}
+
+            // Fallback for file:// or older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            
+            try {{
+                const successful = document.execCommand('copy');
+                if (successful) showSuccess(btn);
+            }} catch (err) {{
+                console.error('Fallback copy failed', err);
+            }}
+            
+            document.body.removeChild(textarea);
+        }}
+
+        function showSuccess(btn) {{
+            const originalText = btn.innerText;
+            btn.innerText = 'Copied!';
+            btn.classList.remove('outline');
+            setTimeout(() => {{
+                btn.innerText = originalText;
+                btn.classList.add('outline');
+            }}, 2000);
+        }}
+    </script>
 </body>
 </html>
 """
 
-def generate_digest(all_articles: List[Article], elevated_topics: List[List[Article]], broad_groups: Dict[str, List[Article]]):
+
+def generate_digest(
+    all_articles: List[Article],
+    elevated_topics: List[List[Article]],
+    broad_groups: Dict[str, List[Article]],
+):
     today = datetime.date.today().isoformat()
     digest_dir = Path("digest") / today
     digest_dir.mkdir(parents=True, exist_ok=True)
-    
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Group by source
     source_groups = collections.defaultdict(list)
     for art in all_articles:
         source_groups[art.source_name].append(art)
-    
+
     # 1. Generate Index Page
     index_content = ""
-    
+
     if elevated_topics:
         index_content += "<h2>🔥 Top Trending Stories</h2>"
         index_content += '<div class="news-grid">'
         for i, topic in enumerate(elevated_topics):
             main_art = topic[0]
-            snippet = main_art.summary[:200] + "..." if len(main_art.summary) > 200 else main_art.summary
+            snippet = (
+                main_art.summary[:200] + "..."
+                if len(main_art.summary) > 200
+                else main_art.summary
+            )
             index_content += f"""
             <article class="trending-story">
                 <header>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <span class="badge">{main_art.language}</span>
+                        <div>
+                            <span class="badge">{main_art.language}</span>
+                            <span class="reading-time">⏱️ {main_art.reading_time} min read</span>
+                        </div>
                         <span class="source-count">{len(topic)} Sources</span>
                     </div>
                     <h3 style="margin:0; font-size: 1.2rem;">{main_art.title}</h3>
                 </header>
                 <p style="font-size: 0.9rem;">{snippet}</p>
                 <footer>
-                    <a href="topic_{i}.html" role="button" class="contrast" style="width: 100%;">Read Deep Dive</a>
+                    <a href="topic_{i}.html" role="button" class="contrast" style="flex: 1;">Deep Dive</a>
+                    <button class="outline secondary copy-btn" data-summary="{html.escape(main_art.summary)}" onclick="copyToClipboard(this)">Copy</button>
                 </footer>
             </article>
             """
@@ -146,7 +223,7 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
         index_content += '<div class="category-grid">'
         for cat in sorted(broad_groups.keys()):
             count = len(broad_groups[cat])
-            slug = cat.lower().replace(' ', '_').replace('&', 'n')
+            slug = cat.lower().replace(" ", "_").replace("&", "n")
             filename = f"category_{slug}.html"
             index_content += f"""
             <a href="{filename}" style="text-decoration: none;">
@@ -163,7 +240,7 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
         index_content += '<div class="category-grid">'
         for source_name in sorted(source_groups.keys()):
             count = len(source_groups[source_name])
-            slug = source_name.lower().replace(' ', '_')
+            slug = source_name.lower().replace(" ", "_")
             filename = f"source_{slug}.html"
             index_content += f"""
             <a href="{filename}" style="text-decoration: none;">
@@ -174,15 +251,12 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
             </a>
             """
         index_content += "</div>"
-        
+
     index_html = BASE_TEMPLATE.format(
-        title="Dashboard",
-        date=today,
-        content=index_content,
-        timestamp=timestamp
+        title="Dashboard", date=today, content=index_content, timestamp=timestamp
     )
     (digest_dir / "index.html").write_text(index_html)
-    
+
     # 2. Generate Topic Pages
     for i, topic in enumerate(elevated_topics):
         topic_content = f'<nav class="breadcrumb"><ul><li><a href="index.html">Home</a></li><li>Trending Story</li></ul></nav>'
@@ -192,12 +266,19 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
             topic_content += f"""
             <article>
                 <header>
-                    <div style="margin-bottom: 0.5rem;"><span class="badge">{art.language.upper()}</span> <strong>{art.source_name}</strong></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <div>
+                            <span class="badge">{art.language.upper()}</span> 
+                            <strong>{art.source_name}</strong>
+                        </div>
+                        <span class="reading-time">⏱️ {art.reading_time} min read</span>
+                    </div>
                     <strong>{art.title}</strong>
                 </header>
                 <p>{art.summary}</p>
                 <footer>
-                    <a href="{art.url}" target="_blank" class="secondary" style="font-size: 0.8rem;">Read full article</a>
+                    <a href="{art.url}" target="_blank" class="secondary outline" style="flex: 1; font-size: 0.8rem;">Original</a>
+                    <button class="outline secondary copy-btn" data-summary="{html.escape(art.summary)}" onclick="copyToClipboard(this)">Copy</button>
                 </footer>
             </article>
             """
@@ -206,13 +287,13 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
             title=f"Story: {topic[0].title[:40]}",
             date=today,
             content=topic_content,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
         (digest_dir / f"topic_{i}.html").write_text(topic_html)
-        
+
     # 3. Generate Category Pages
     for cat, articles in broad_groups.items():
-        cat_slug = cat.lower().replace(" ", "_").replace('&', 'n')
+        cat_slug = cat.lower().replace(" ", "_").replace("&", "n")
         cat_content = f'<nav class="breadcrumb"><ul><li><a href="index.html">Home</a></li><li>{cat}</li></ul></nav>'
         cat_content += f"<h1>{cat} Digest</h1>"
         cat_content += '<div class="news-grid">'
@@ -220,15 +301,26 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
             cat_content += f"""
             <article>
                 <header>
-                    <div style="margin-bottom: 0.5rem;"><span class="badge">{art.language.upper()}</span> <strong>{art.source_name}</strong></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <div>
+                            <span class="badge">{art.language.upper()}</span> 
+                            <strong>{art.source_name}</strong>
+                        </div>
+                        <span class="reading-time">⏱️ {art.reading_time} min read</span>
+                    </div>
                     <strong>{art.title}</strong>
                 </header>
                 <p style="font-size: 0.95rem;">{art.summary}</p>
-                <footer><a href="{art.url}" target="_blank" class="contrast outline" style="font-size: 0.8rem;">Read Original</a></footer>
+                <footer>
+                    <a href="{art.url}" target="_blank" class="contrast outline" style="flex: 1; font-size: 0.8rem;">Original</a>
+                    <button class="outline secondary copy-btn" data-summary="{html.escape(art.summary)}" onclick="copyToClipboard(this)">Copy</button>
+                </footer>
             </article>
             """
         cat_content += "</div>"
-        cat_html = BASE_TEMPLATE.format(title=cat, date=today, content=cat_content, timestamp=timestamp)
+        cat_html = BASE_TEMPLATE.format(
+            title=cat, date=today, content=cat_content, timestamp=timestamp
+        )
         (digest_dir / f"category_{cat_slug}.html").write_text(cat_html)
 
     # 4. Generate Source Pages
@@ -241,15 +333,23 @@ def generate_digest(all_articles: List[Article], elevated_topics: List[List[Arti
             source_content += f"""
             <article>
                 <header>
-                    <div style="margin-bottom: 0.5rem;"><span class="badge">{art.category}</span></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span class="badge">{art.category}</span>
+                        <span class="reading-time">⏱️ {art.reading_time} min read</span>
+                    </div>
                     <strong>{art.title}</strong>
                 </header>
                 <p style="font-size: 0.95rem;">{art.summary}</p>
-                <footer><a href="{art.url}" target="_blank" class="contrast outline" style="font-size: 0.8rem;">Read Original</a></footer>
+                <footer>
+                    <a href="{art.url}" target="_blank" class="contrast outline" style="flex: 1; font-size: 0.8rem;">Original</a>
+                    <button class="outline secondary copy-btn" data-summary="{html.escape(art.summary)}" onclick="copyToClipboard(this)">Copy</button>
+                </footer>
             </article>
             """
         source_content += "</div>"
-        source_html = BASE_TEMPLATE.format(title=source_name, date=today, content=source_content, timestamp=timestamp)
+        source_html = BASE_TEMPLATE.format(
+            title=source_name, date=today, content=source_content, timestamp=timestamp
+        )
         (digest_dir / f"source_{source_slug}.html").write_text(source_html)
-        
+
     return digest_dir / "index.html"
